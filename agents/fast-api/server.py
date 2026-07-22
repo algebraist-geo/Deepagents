@@ -139,3 +139,27 @@ async def upload_excel(file: UploadFile = File(...)):
         }
     except Exception as e:
         return {"error": f"解析失败: {str(e)}"}
+
+
+@app.post("/api/v1/upload_and_chat")
+async def upload_and_chat(
+        thread_id: str,
+        message: str = "请分析我上传的这份表格",
+        file: UploadFile = File(...)
+):
+    # 1. 保存文件
+    file_path = UPLOAD_DIR / file.filename
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # 2. 拼接消息，把绝对路径直接告诉 Agent
+    full_message = f"{message}。文件已保存在：{file_path.resolve()}"
+
+    # 3. 直接调用 Agent
+    config = {"configurable": {"thread_id": thread_id}}
+    res = agent.invoke(
+        {"messages": [{"role": "user", "content": full_message}]},
+        config=config
+    )
+
+    return ChatResponse(status="completed", content=res["messages"][-1].content)
