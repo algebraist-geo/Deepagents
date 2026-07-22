@@ -1,8 +1,11 @@
 import os
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException,File, UploadFile
 from pydantic import BaseModel
 from datetime import datetime
+from pathlib import Path
+import shutil
+import pandas as pd
 
 from langgraph.checkpoint.postgres import PostgresSaver  # 生产推荐持久化检查点
 from langgraph.types import Command
@@ -101,3 +104,38 @@ async def approve_endpoint(req: ApproveRequest):
 @app.get("/health")
 def health_check():
     return {"status": "ok", "time": datetime.now().isoformat()}
+# =============================================================================
+#Excel表格上传
+
+UPLOAD_DIR = Path("./uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+
+@app.post("/api/v1/upload_excel")
+async def upload_excel(file: UploadFile = File(...)):
+    # 1. 校验扩展名
+    if not file.filename.endswith((".xlsx", ".xls")):
+        return {"error": "仅支持上传 Excel 文件 (.xlsx, .xls)"}
+
+    # 2. 保存上传的文件
+    file_path = UPLOAD_DIR / file.filename
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # 3. 读取并解析文件
+    try:
+        # 根据文件类型指定解析引擎
+        engine = "openpyxl" if file.filename.endswith(".xlsx") else "xlrd"
+        df = pd.read_excel(file_path, engine=engine)
+
+        # 替换 NaN 空值，避免 JSON 转换报错
+        df = df.fillna("")
+
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "total_rows": len(df),
+            "data": df.to_dict(orient="records"),  # 返回解析后的列表数据
+        }
+    except Exception as e:
+        return {"error": f"解析失败: {str(e)}"}

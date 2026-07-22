@@ -151,7 +151,7 @@ async def main():
     # 命令行测试输入
     # absolute_csv_path=input('输入框：')
     # 简化测试直接 hardcode，或在调用时由 Fast API 传入
-    absolute_csv_path = '做一份关于计算机存储市场的发展趋势报告'
+    absolute_csv_path = input('输入框：')
     print('=' * 50)
 
     user_query = f"{absolute_csv_path}"
