@@ -69,8 +69,8 @@ store = InMemoryStore()
 backend = CompositeBackend(
     default=StoreBackend(namespace=lambda rt: ('workspace', 'hanxd')),
     routes={
-        '/memories/': StoreBackend(namespace=lambda rt: ('memories', 'hanxd')),
-        '/skills/': StoreBackend(namespace=lambda _rt: ('skills',))
+        '/memories/': StoreBackend(store=store,namespace=lambda rt: ('memories', 'hanxd')),
+        '/skills/': StoreBackend(store=store,namespace=lambda _rt: ('skills',))
     }
 )
 
