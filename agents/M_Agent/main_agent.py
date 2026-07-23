@@ -20,7 +20,7 @@ from skills.data_analysis.data_analysis import (
     e2b_execute_python,
     e2b_download_artifact,
     close_sandbox,
-    e2b_list_workspace
+    e2b_list_workspace, get_sandbox
 )
 
 # ----------------------------------------------------------------------------------
@@ -80,11 +80,12 @@ def sync_local_file_to_sandbox(local_file_path: Path) -> str:
     sandbox_file_path = f"{E2B_UPLOAD_DIR}/{absolute_local_path.name}"
 
     # 确保沙箱上传目录存在
-    e2b_sandbox.commands.run(f"mkdir -p {E2B_UPLOAD_DIR}")
+    sandbox=get_sandbox()
+    sandbox.commands.run(f"mkdir -p {E2B_UPLOAD_DIR}")
 
     # 读取本地文件字节并写入沙箱
     file_bytes = absolute_local_path.read_bytes()
-    e2b_sandbox.files.write(sandbox_file_path, file_bytes)
+    sandbox.files.write(sandbox_file_path, file_bytes)
 
     return sandbox_file_path
 
