@@ -8,8 +8,7 @@
 
 1. **【第一步】上传数据**：
    立刻调用 `e2b_upload_dataset` 工具，参数设为：
-   - `local_file_path='sales_data.csv'`
-   - `remote_file_name='sales_data.csv'`
+   - `local_file_path='uploads/'`
 
 2. **【第二步】数据分析与报告编写（核心关键）**：
    在沙箱中通过 `e2b_execute_python` 运行 Python 脚本完成分析：
