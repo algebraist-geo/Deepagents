@@ -11,7 +11,8 @@ pyproject.toml
 langgraph.json
 human_middleware.py
 DeepAgent.egg-info
-.langgraph_api
+.langgraph_api/
 agents/M_Agent/test_1.py
 agents/M_Agent/ts.py
 skills/file_manager/*
+data/

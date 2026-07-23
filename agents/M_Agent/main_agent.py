@@ -16,13 +16,13 @@ from langchain_tavily import TavilySearch
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
-
 from llms import llm  # 确保你的项目里有 llms.py 并导出了 llm 实例
 from skills.data_analysis.data_analysis import (
     e2b_upload_dataset,
     e2b_execute_python,
     e2b_download_artifact,
-    close_sandbox
+    close_sandbox,
+    e2b_list_workspace
 )
 
 # ----------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ data_analyst_subagent = {
     "description": "专职负责沙箱数据分析、图表生成、Markdown报告编写以及文件打包下载的专家。",
     'middleware': [hum_middleware],
     "system_prompt": analyst_prompt,
-    "tools": [e2b_upload_dataset, e2b_execute_python, e2b_download_artifact]
+    "tools": [e2b_upload_dataset, e2b_execute_python, e2b_download_artifact,e2b_list_workspace]
 }
 data_search = {
     'name': '王怀婷',
@@ -110,31 +110,9 @@ agent = create_deep_agent(
     subagents=[data_analyst_subagent, data_search],
     middleware=[]
 )
-
-
-# ----------------------------------------------------------------------------------
-# main() 函数现在只保留用于本地测试、数据生成和调用逻辑
-# ----------------------------------------------------------------------------------
-async def main():
-    # -------------------------------------------------------------
-    # 1. 本地测试数据准备 (只在本地直接运行 test_1.py 时执行)
-    # -------------------------------------------------------------
-
-    # 如果本地没有测试数据，自动生成一份2026上半年销售快照
-    if not test_csv_path.exists():
-        print(f"正在本地生成模拟测试数据 {test_csv_path.name}...")
-        dates = pd.date_range(start="2026-01-01", end="2026-06-30", freq="D")
-        categories = ["Electronics", "Clothing", "Home"]
-        data = []
-        for d in dates:
-            for c in categories:
-                revenue = np.random.randint(1000, 5000) + (500 if c == "Electronics" else 0)
-                data.append({"date": d.strftime("%Y-%m-%d"), "category": c, "revenue": revenue})
-        pd.DataFrame(data).to_csv(test_csv_path, index=False)
-
-    # -------------------------------------------------------------
-    # 2. 注册技能 (将技能数据写入 store，必须在 main 里运行)
-    # -------------------------------------------------------------
+# ==================== 核心修改：将技能注册提取到全局 ====================
+def init_agent_skills()->None:
+    """初始化并注册 Agent 的技能，供 FastAPI 或本地测试调用"""
     print("正在注册技能到 Agent 存储后端...")
     for skill_md in SKILL_ROOT.glob("**/SKILL.md"):
         relative_path = skill_md.relative_to(SKILL_ROOT)
@@ -144,9 +122,16 @@ async def main():
             backend.write(virtual_path, f.read())
             print(f"成功加载并映射技能说明文件: {virtual_path}")
 
-    # -------------------------------------------------------------
-    # 3. 运行本地测试用例
-    # -------------------------------------------------------------
+# 直接在模块加载时执行一次技能注册
+init_agent_skills()
+# ========================================================================
+
+
+# ----------------------------------------------------------------------------------
+# main() 函数现在只保留用于本地测试、数据生成和调用逻辑
+# ----------------------------------------------------------------------------------
+async def main():
+
     print('=' * 50)
     # 命令行测试输入
     # absolute_csv_path=input('输入框：')

@@ -1,6 +1,6 @@
 import os
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException,File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from pydantic import BaseModel
 from datetime import datetime
 from pathlib import Path
@@ -46,7 +46,7 @@ async def chat_endpoint(req: ChatRequest):
 
     try:
         # 调用 Agent
-        res = agent.invoke(
+        res =await agent.ainvoke(
             {"messages": [{"role": "user", "content": req.message}]},
             config=config
         )
@@ -91,7 +91,7 @@ async def approve_endpoint(req: ApproveRequest):
 
     try:
         # 带着决策命令恢复 Agent 执行
-        final_res = agent.invoke(decision, config=config)
+        final_res =await agent.ainvoke(decision, config=config)
 
         final_message = final_res["messages"][-1].content
         return ChatResponse(status="completed", content=final_message)
@@ -111,55 +111,55 @@ UPLOAD_DIR = Path("./uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 
-@app.post("/api/v1/upload_excel")
-async def upload_excel(file: UploadFile = File(...)):
-    # 1. 校验扩展名
+def _save_and_parse_excel(file: UploadFile):
+    """内部通用函数：负责保存 Excel 文件并解析出 DataFrame"""
     if not file.filename.endswith((".xlsx", ".xls")):
-        return {"error": "仅支持上传 Excel 文件 (.xlsx, .xls)"}
+        raise ValueError("仅支持上传 Excel 文件 (.xlsx, .xls)")
 
-    # 2. 保存上传的文件
     file_path = UPLOAD_DIR / file.filename
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # 3. 读取并解析文件
+    engine = "openpyxl" if file.filename.endswith(".xlsx") else "xlrd"
+    df = pd.read_excel(file_path, engine=engine).fillna("")
+
+    return file_path, df
+
+
+# ==================== 接口函数（极简版） ==================== #
+
+@app.post("/api/v1/upload_excel")
+async def upload_excel(file: UploadFile = File(...)):
+    """仅上传并返回解析结果"""
     try:
-        # 根据文件类型指定解析引擎
-        engine = "openpyxl" if file.filename.endswith(".xlsx") else "xlrd"
-        df = pd.read_excel(file_path, engine=engine)
-
-        # 替换 NaN 空值，避免 JSON 转换报错
-        df = df.fillna("")
-
+        file_path, df = _save_and_parse_excel(file)
         return {
             "status": "success",
             "filename": file.filename,
             "total_rows": len(df),
-            "data": df.to_dict(orient="records"),  # 返回解析后的列表数据
+            "data": df.to_dict(orient="records"),
         }
     except Exception as e:
-        return {"error": f"解析失败: {str(e)}"}
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/v1/upload_and_chat")
 async def upload_and_chat(
-        thread_id: str,
-        message: str = "请分析我上传的这份表格",
+        thread_id: str = Form(...),
+        message: str = Form("请分析我上传的这份表格"),
         file: UploadFile = File(...)
 ):
-    # 1. 保存文件
-    file_path = UPLOAD_DIR / file.filename
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    """上传并触发 Agent 对话"""
+    try:
+        file_path, _ = _save_and_parse_excel(file)
 
-    # 2. 拼接消息，把绝对路径直接告诉 Agent
-    full_message = f"{message}。文件已保存在：{file_path.resolve()}"
+        full_message = f"{message}。文件已保存在：{file_path.resolve()}"
+        config = {"configurable": {"thread_id": thread_id}}
 
-    # 3. 直接调用 Agent
-    config = {"configurable": {"thread_id": thread_id}}
-    res = agent.invoke(
-        {"messages": [{"role": "user", "content": full_message}]},
-        config=config
-    )
-
-    return ChatResponse(status="completed", content=res["messages"][-1].content)
+        res =await agent.ainvoke(
+            {"messages": [{"role": "user", "content": full_message}]},
+            config=config
+        )
+        return ChatResponse(status="completed", content=res["messages"][-1].content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
