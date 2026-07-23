@@ -1,4 +1,3 @@
-# 修改后的 test_1.py
 import os
 import asyncio
 from datetime import datetime
@@ -9,7 +8,6 @@ from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, StoreBackend
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain_core.tools import tool
-# from pathlib import Path # 重复导入
 from langchain_e2b import E2BSandbox
 from e2b import Sandbox
 from langchain_tavily import TavilySearch
@@ -63,6 +61,32 @@ print('初始化工具与环境...')
 search = TavilySearch(api_key=os.environ.get('Tavily_api_key'), max_results=3)
 e2b_sandbox = Sandbox.create(api_key=os.environ.get('SandBoxE2B'))
 e2b_backend = E2BSandbox(sandbox=e2b_sandbox)
+
+# E2B 沙箱内数据集目录（与 data_analyst 子代理预期路径一致）
+E2B_UPLOAD_DIR = "/root/Deepagents/uploads"
+
+
+def sync_local_file_to_sandbox(local_file_path: Path) -> str:
+    """
+    将本地文件直接同步到 E2B 沙箱。
+    供 FastAPI 上传接口调用，绕过 Agent 内 e2b_upload_dataset 的人工审批。
+    """
+    # 解析为绝对路径并校验文件是否存在
+    absolute_local_path = local_file_path.resolve()
+    if not absolute_local_path.is_file():
+        raise FileNotFoundError(f"本地文件不存在: {absolute_local_path}")
+
+    # 构造沙箱内的目标路径
+    sandbox_file_path = f"{E2B_UPLOAD_DIR}/{absolute_local_path.name}"
+
+    # 确保沙箱上传目录存在
+    e2b_sandbox.commands.run(f"mkdir -p {E2B_UPLOAD_DIR}")
+
+    # 读取本地文件字节并写入沙箱
+    file_bytes = absolute_local_path.read_bytes()
+    e2b_sandbox.files.write(sandbox_file_path, file_bytes)
+
+    return sandbox_file_path
 
 checkpointer = MemorySaver()
 store = InMemoryStore()

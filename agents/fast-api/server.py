@@ -1,4 +1,3 @@
-import os
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from pydantic import BaseModel
@@ -11,7 +10,7 @@ from langgraph.checkpoint.postgres import PostgresSaver  # 生产推荐持久化
 from langgraph.types import Command
 
 # 导入你之前的 Agent 创建逻辑与工具
-from agents.M_Agent.main_agent import agent
+from agents.M_Agent.main_agent import agent, sync_local_file_to_sandbox
 
 app = FastAPI(title="DeepAgent API Service", version="1.0.0")
 
@@ -151,15 +150,37 @@ async def upload_and_chat(
 ):
     """上传并触发 Agent 对话"""
     try:
+        # 保存 Excel 到 API 服务器本地
         file_path, _ = _save_and_parse_excel(file)
 
-        full_message = f"{message}。文件已保存在：{file_path.resolve()}"
+        # 方案 A：立即同步到 E2B 沙箱，避免 Agent 在沙箱内找不到文件
+        sandbox_file_path = sync_local_file_to_sandbox(file_path)
+
+        full_message = (
+            f"{message}。"
+            f"数据文件已同步至 E2B 沙箱，请直接使用路径 `{sandbox_file_path}` 进行分析，"
+            f"无需再次上传或搜索其他目录。"
+        )
         config = {"configurable": {"thread_id": thread_id}}
 
-        res =await agent.ainvoke(
+        res = await agent.ainvoke(
             {"messages": [{"role": "user", "content": full_message}]},
             config=config
         )
+
+        # 与 chat 接口一致，处理 Agent 执行过程中的中断
+        if "__interrupt__" in res and res["__interrupt__"]:
+            interrupt_data = res["__interrupt__"][0].value
+            action_req = interrupt_data["action_requests"][0]
+            return ChatResponse(
+                status="interrupted",
+                interrupt_info={
+                    "action_name": action_req["name"],
+                    "args": action_req["args"],
+                    "description": action_req.get("description", "")
+                }
+            )
+
         return ChatResponse(status="completed", content=res["messages"][-1].content)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
